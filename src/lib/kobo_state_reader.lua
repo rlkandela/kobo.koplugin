@@ -58,11 +58,12 @@ local function calculateChapterProgress(conn, book_id, chapter_id_bookmarked)
     end
 
     local filename = chapter_id_bookmarked:match("^([^#]+)") or chapter_id_bookmarked
+    -- Chapter.BookID == Book.ContentID
+    -- Chapter.Title == filename
     local chapter_lookup = conn:exec(
         string.format(
-            "SELECT ContentID, ___FileOffset, ___FileSize, ___PercentRead FROM content WHERE ContentID LIKE '%s%%' AND ContentType = 9 AND (ContentID LIKE '%%%s' OR ContentID LIKE '%%%s#%%') LIMIT 1",
+            "SELECT ContentID, ___FileOffset, ___FileSize, ___PercentRead FROM content WHERE BookID = '%s' AND ContentType = 9 AND Title = '%s' LIMIT 1",
             book_id,
-            filename,
             filename
         )
     )

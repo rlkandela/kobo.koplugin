@@ -93,17 +93,21 @@ end
 ---
 --- Extracts the filename portion from a ContentID.
 ---
---- Kobo ContentIDs are in format: "BOOKID!!filename.html"
---- This function extracts just "filename.html" for use in bookmarks.
+--- Kobo ContentIDs are in format: "BOOKID!Path!To!filename.html"
+--- This function extracts just "Path/To/filename.html" for use in bookmarks.
 ---
 --- @param content_id string: Full ContentID.
 --- @return string: Filename portion of ContentID.
 local function extractFilename(content_id)
-    if not content_id:match("!!") then
+    local result = content_id:match("!(.*)$")
+    if not result then
         return content_id
     end
 
-    return content_id:match("!!(.+)$")
+    result = result:gsub("!", "/")
+    result = result:gsub("^/+", "")
+
+    return result
 end
 
 ---
@@ -126,9 +130,10 @@ end
 --- @return number: Chapter progress percentage (0-100).
 --- @return string|nil: Chapter ContentID, or nil if not found.
 local function findChapterForPercentage(conn, book_id, percent_read)
+    -- Chapter.BookID == Book.ContentID
     local chapters_res = conn:exec(
         string.format(
-            "SELECT ContentID, ___FileOffset, ___FileSize FROM content WHERE ContentID LIKE '%s%%%%' AND ContentType = 9 AND ___FileOffset <= %f ORDER BY ___FileOffset DESC LIMIT 1",
+            "SELECT ContentID, ___FileOffset, ___FileSize FROM content WHERE BookID = '%s' AND ContentType = 9 AND ___FileOffset <= %f ORDER BY ___FileOffset DESC LIMIT 1",
             book_id,
             percent_read
         )
