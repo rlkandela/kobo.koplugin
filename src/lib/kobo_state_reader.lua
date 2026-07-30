@@ -9,8 +9,31 @@ local logger = require("logger")
 local KoboStateReader = {}
 
 ---
+--- Returns the local timezone offset (local - UTC) in seconds.
+--- @param ts number|nil: Optional timestamp to calculate offset for. Defaults to current time.
+--- @return number: Local timezone offset (local - UTC) in seconds.
+local function localUtcOffset(ts)
+    ts = ts or os.time()
+    -- "*t" always returns an osdate table.
+    local local_dt = os.date("*t", ts) --[[@as osdate]]
+    -- "!*t" always returns an osdate table.
+    local utc_dt = os.date("!*t", ts) --[[@as osdate]]
+
+    -- os.time(local_dt) resolves summer time.
+    -- set both to standard time without modifying hour to get the correct offset
+    local_dt.isdst = false
+    utc_dt.isdst = false
+
+    return os.difftime(os.time(local_dt), os.time(utc_dt))
+end
+
+---
 --- Parses ISO 8601 datetime string to Unix timestamp.
---- Handles formats: YYYY-MM-DDTHH:MM:SSZ and YYYY-MM-DD HH:MM:SS.SSS+00:00
+--- Handles formats:
+---     YYYY-MM-DDTHH:MM:SS
+---     YYYY-MM-DDTHH:MM:SSZ
+---     YYYY-MM-DD HH:MM:SS.SSS+00:00
+--- Datetimes without a timezone are interpreted as local time.
 --- @param date_string string: ISO 8601 datetime string.
 --- @return number: Unix timestamp, or 0 if parsing fails.
 local function parseKoboTimestamp(date_string)
@@ -18,7 +41,7 @@ local function parseKoboTimestamp(date_string)
         return 0
     end
 
-    local year, month, day, hour, min, sec = date_string:match("(%d+)-(%d+)-(%d+)[T ](%d+):(%d+):(%d+)")
+    local _, end_pos, year, month, day, hour, min, sec = date_string:find("(%d+)-(%d+)-(%d+)[T ](%d+):(%d+):(%d+)")
     if not year then
         return 0
     end
@@ -32,7 +55,36 @@ local function parseKoboTimestamp(date_string)
         sec = tonumber(sec),
     })
 
-    return dt or 0
+    if not dt then
+        return 0
+    end
+
+    local remainder = date_string:sub(end_pos + 1):gsub("^%.%d+", "")
+
+    if remainder == "" then
+        -- local time
+        return dt
+    end
+
+    local local_offset = localUtcOffset(dt)
+
+    if remainder == "Z" then
+        -- UTC + local_offset = local time
+        return dt + local_offset
+    end
+
+    local sign, hour_offset, min_offset = remainder:match("^([+-])(%d+):(%d+)$")
+    if sign then
+        local tz_offset = tonumber(hour_offset) * 3600 + tonumber(min_offset) * 60
+        if sign == "-" then
+            tz_offset = -tz_offset
+        end
+        -- dt - tz_offset = UTC
+        -- UTC + local_offset = local time
+        return dt - tz_offset + local_offset
+    end
+
+    return dt
 end
 
 ---
